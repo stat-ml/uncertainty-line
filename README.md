@@ -1,13 +1,12 @@
 # **Uncertainty-LINE**: Length-Invariant Estimation of Uncertainty for Large Language Models.
 
-This repository contains the code and processed data for reproducing the Uncertainty-LINE method.
+This repository contains the code and processed data for the Uncertainty-LINE method. Experimental managers are available for download [here](https://drive.google.com/file/d/1ze6tqaFfp-_0Aum6t0c3637ET_HgtPaj/view?usp=sharing).
 
 ---
 
 ## Repository Structure
 
 ```
-├── processed_mans/                     # Processed experiment managers with all model outputs, UE scores, and quality metrics
 ├── results/                            # Collected experimental results in CSV format
 ├── plots/                              # Generated plots for analysis
 │
@@ -21,6 +20,8 @@ This repository contains the code and processed data for reproducing the Uncerta
 ├── README.md                           # Project documentation (this file)
 └── requirements.txt                    # Python dependencies
 ```
+
+Downloaded managers should be placed in the folder processed_mans/
 
 ---
 
