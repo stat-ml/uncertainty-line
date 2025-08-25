@@ -1,0 +1,4 @@
+git+https://github.com/rvashurin/lm-polygraph.git@detr_ue_nmt
+unbabel-comet>=2.1.0
+sacrecomet==0.1.0
+seaborn==0.13.2
