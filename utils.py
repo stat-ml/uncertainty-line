@@ -238,7 +238,6 @@ def detrend_ue_w_quality(datasets, model, all_metrics, ue_methods, methods_dict,
            
             if quality_fit_sample_size is not None and quality_fit_sample_size < len(train_gen_lengths):
                 # Filter to only non-outliers
-                # filtered_lengths = train_gen_lengths_normalized
                 filtered_metrics = train_normalized_metric_values[method][below_q_ids]
                 filtered_gen_lengths_normalized = train_gen_lengths_normalized
 
@@ -351,7 +350,6 @@ def detrend_ue_degreed(
             train_ue_norm = ue_scaler.fit_transform(train_ue_values[method][:, None]).squeeze()
             test_ue_norm  = ue_scaler.transform(test_ue_values[method][:, None]).squeeze()
 
-            # Baseline (raw) score: use unnormalized test UE values as in your original
             met_vals = test_metric_values[metric]
             raw_score = score_ues(test_ue_values[method], met_vals)
             ue_scores[f'{method}_raw'].append(float(raw_score))
@@ -404,9 +402,7 @@ def summarize_quality_fit(datasets, model, model_type, all_metrics, ue_methods, 
             ue_scaler = MinMaxScaler()
             train_ue_norm = ue_scaler.fit_transform(train_ue[:, np.newaxis]).squeeze()
 
-            # Sample (optional)
             if quality_fit_sample_size is not None and quality_fit_sample_size < len(train_gen_lengths):
-                # Stratified sampling based on generation lengths
                 n_bins = 10
                 est = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='kmeans')
                 bin_ids = est.fit_transform(train_gen_lengths_norm.reshape(-1, 1)).astype(int).squeeze()
