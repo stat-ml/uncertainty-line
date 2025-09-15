@@ -117,7 +117,7 @@ def extract_and_prepare_data(dataset, methods_dict, all_metrics, model='llama'):
 
 
 
-def detrend_ue(datasets, model, all_metrics, ue_methods, methods_dict):
+def detrend_ue(datasets, model, all_metrics, ue_methods, methods_dict, return_scores =False):
     ue_scores = defaultdict(list)
     ue_coefs = defaultdict(list)
     ave_test_metric_values = {}
@@ -178,7 +178,8 @@ def detrend_ue(datasets, model, all_metrics, ue_methods, methods_dict):
 
             ue_scores[f'{method}_raw'].append(raw_score)
             ue_scores[f'{method}_detr'].append(detrended_score)
-    
+    if return_scores:
+        return test_normalized_ue_values, ue_residuals, test_gen_lengths_normalized
     return ue_scores, ue_coefs, ave_test_metric_values
 
 
@@ -345,7 +346,6 @@ def detrend_ue_degreed(
         test_feats_by_deg  = {d: poly_by_deg[d].transform(test_gl_norm[:, None]) for d in (1, 2, 3)}
 
         for method in ue_methods:
-            # Normalize UE on TRAIN, apply to TEST
             ue_scaler = MinMaxScaler()
             train_ue_norm = ue_scaler.fit_transform(train_ue_values[method][:, None]).squeeze()
             test_ue_norm  = ue_scaler.transform(test_ue_values[method][:, None]).squeeze()
@@ -354,11 +354,9 @@ def detrend_ue_degreed(
             raw_score = score_ues(test_ue_values[method], met_vals)
             ue_scores[f'{method}_raw'].append(float(raw_score))
 
-            # Degree-specific corrections
             for d in (1, 2, 3):
                 linreg = sklearn.linear_model.LinearRegression()
                 linreg.fit(train_feats_by_deg[d], train_ue_norm)
-                # Save coefs for later inspection (shape: n_features,)
                 ue_coefs[f'{method}_deg{d}'].append(linreg.coef_.copy())
 
                 # Residuals on TEST (using normalized UE)
@@ -371,124 +369,3 @@ def detrend_ue_degreed(
 
     return ue_scores, ue_coefs, ave_test_metric_values
 
-def summarize_quality_fit(datasets, model, model_type, all_metrics, ue_methods, methods_dict, task='nmt', quality_fit_sample_size=None):
-    summary_stats = defaultdict(lambda: defaultdict(dict))
-
-    if len(all_metrics) == 1 and len(datasets) > 1:
-        all_metrics = all_metrics * len(datasets)
-    elif len(all_metrics) != len(datasets):
-        raise ValueError('Number of metrics and datasets must be the same')
-
-    for metric, dataset in zip(all_metrics, datasets):
-        train_ue_values, _, train_metric_values, _, train_gen_lengths, _ = extract_and_prepare_data(
-            dataset, methods_dict, [metric], model=model, model_type=model_type, task=task
-        )
-
-        upper_q = np.quantile(train_gen_lengths, 0.95)
-        lower_q = np.quantile(train_gen_lengths, 0.05)
-        below_q_ids = (train_gen_lengths < upper_q) & (train_gen_lengths > lower_q)
-        train_gen_lengths = train_gen_lengths[below_q_ids]
-
-        for method in ue_methods:
-            train_ue = train_ue_values[method][below_q_ids]
-            train_quality = train_metric_values[metric][below_q_ids]
-
-            length_scaler = MinMaxScaler()
-            train_gen_lengths_norm = length_scaler.fit_transform(train_gen_lengths[:, np.newaxis]).squeeze()
-
-            metric_scaler = MinMaxScaler()
-            train_quality_norm = metric_scaler.fit_transform(train_quality[:, np.newaxis]).squeeze()
-
-            ue_scaler = MinMaxScaler()
-            train_ue_norm = ue_scaler.fit_transform(train_ue[:, np.newaxis]).squeeze()
-
-            if quality_fit_sample_size is not None and quality_fit_sample_size < len(train_gen_lengths):
-                n_bins = 10
-                est = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='kmeans')
-                bin_ids = est.fit_transform(train_gen_lengths_norm.reshape(-1, 1)).astype(int).squeeze()
-                sample_per_bin = quality_fit_sample_size // n_bins
-                stratified_indices = []
-
-                for bin_id in np.unique(bin_ids):
-                    bin_indices = np.where(bin_ids == bin_id)[0]
-                    n = min(sample_per_bin, len(bin_indices))
-                    if n > 0:
-                        stratified_indices.extend(np.random.choice(bin_indices, size=n, replace=False))
-                indices = np.array(stratified_indices)
-            else:
-                indices = np.arange(len(train_gen_lengths_norm))
-
-            X = train_gen_lengths_norm[indices].reshape(-1, 1)
-            y_quality = train_quality_norm[indices]
-            y_ue = train_ue_norm[indices]
-
-            # Fit quality regression
-            reg_quality = sklearn.linear_model.LinearRegression().fit(X, y_quality)
-            preds_quality = reg_quality.predict(X)
-            r2_quality = r2_score(y_quality, preds_quality)
-            mse_quality = mean_squared_error(y_quality, preds_quality)
-
-            # Fit UE regression
-            reg_ue = sklearn.linear_model.LinearRegression().fit(X, y_ue)
-            preds_ue = reg_ue.predict(X)
-            r2_ue = r2_score(y_ue, preds_ue)
-            mse_ue = mean_squared_error(y_ue, preds_ue)
-
-            # Store summary
-            summary_stats[dataset][method] = {
-                'n_train_points': len(indices),
-                'quality_r2': round(r2_quality, 4),
-                'quality_mse': round(mse_quality, 4),
-                'quality_coef': round(reg_quality.coef_[0], 4),
-                'quality_intercept': round(reg_quality.intercept_, 4),
-                'ue_r2': round(r2_ue, 4),
-                'ue_mse': round(mse_ue, 4),
-                'ue_coef': round(reg_ue.coef_[0], 4),
-                'ue_intercept': round(reg_ue.intercept_, 4),
-            }
-
-    return summary_stats
-
-
-def summarize_ue_fit(datasets, model, model_type, all_metrics, ue_methods, methods_dict, task='nmt'):
-    summary_stats = defaultdict(lambda: defaultdict(dict))
-
-    if len(all_metrics) == 1 and len(datasets) > 1:
-        all_metrics = all_metrics * len(datasets)
-    elif len(all_metrics) != len(datasets):
-        raise ValueError('Number of metrics and datasets must be the same')
-
-    for metric, dataset in zip(all_metrics, datasets):
-        train_ue_values, _, _, _, train_gen_lengths, _ = extract_and_prepare_data(
-            dataset, methods_dict, [metric], model=model, model_type=model_type, task=task
-        )
-
-        upper_q = np.quantile(train_gen_lengths, 0.95)
-        lower_q = np.quantile(train_gen_lengths, 0.05)
-        below_q_ids = (train_gen_lengths < upper_q) & (train_gen_lengths > lower_q)
-        train_gen_lengths = train_gen_lengths[below_q_ids]
-
-        for method in ue_methods:
-            train_ue = train_ue_values[method][below_q_ids]
-
-            length_scaler = MinMaxScaler()
-            train_gen_lengths_norm = length_scaler.fit_transform(train_gen_lengths[:, np.newaxis]).squeeze()
-
-            ue_scaler = MinMaxScaler()
-            train_ue_norm = ue_scaler.fit_transform(train_ue[:, np.newaxis]).squeeze()
-
-            X = train_gen_lengths_norm.reshape(-1, 1)
-            y = train_ue_norm
-
-            linreg = sklearn.linear_model.LinearRegression().fit(X, y)
-            y_pred = linreg.predict(X)
-
-            summary_stats[dataset][method] = {
-                'n_train_points': len(y),
-                'ue_r2': round(r2_score(y, y_pred), 4),
-                'ue_mse': round(mean_squared_error(y, y_pred), 4),
-                'ue_coef': round(linreg.coef_[0], 4),
-                'ue_intercept': round(linreg.intercept_, 4)
-            }
-
-    return summary_stats
