@@ -1,6 +1,6 @@
 # **Uncertainty-LINE**: Length-Invariant Estimation of Uncertainty for Large Language Models.
 
-This repository contains the code and processed data for the Uncertainty-LINE method. Experimental managers are available for download [here](https://drive.google.com/file/d/1ze6tqaFfp-_0Aum6t0c3637ET_HgtPaj/view?usp=sharing).
+This repository contains the code and processed data for the Uncertainty-LINE method. Experimental managers are available for download [here](https://drive.google.com/file/d/1XJAz8R5yHVoUXzLJneEe8Dpou2Y6VilA/view?usp=sharing).
 
 ---
 
